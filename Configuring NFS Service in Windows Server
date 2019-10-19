@@ -1,5 +1,5 @@
 # 11 Oct 2019
-# Script to Install NFS Service in Windows Server 2019 followed by Configuring the NFS Drive, and adding NFS Clientsand Permissions
+# Script to Install NFS Service in Windows Server followed by Configuring the NFS Drive, and adding NFS Clientsand Permissions
 
 ### CODE TO INSTALL NFS SERVICE, CONFIGURE NFS ON DRIVE, AND ADD NFS CLIENTS, AND PERMISSION
 Install-WindowsFeature FS-NFS-Service -IncludeAllSubFeature -IncludeManagementTools
