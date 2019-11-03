@@ -1,7 +1,7 @@
 # 14 Oct 2019
 # Script to Install iSCSI Service in Windows Server followed by creating the virtial disks, assigning IP addresses to the iSCSI target, and mapping the Target name to the virtual disks
 
-### CODE TO INSTALL ISCSI SERVICE, CONFIGURE ISCSI DISKS,AND IP ADDRESS TO TARGETNAMES, AND MAP VIRTUALDISKS TO TARGETS
+# CODE TO INSTALL ISCSI SERVICE, CONFIGURE ISCSI DISKS,AND IP ADDRESS TO TARGETNAMES, AND MAP VIRTUALDISKS TO TARGETS
 Install-WindowsFeature FS-iSCSITarget-Server -IncludeManagementTools
 
 New-IscsiVirtualDisk -Path "F:\iSCSI1.vhdx" -Size 256GB
