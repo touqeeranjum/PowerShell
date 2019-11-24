@@ -1,0 +1,99 @@
+$IP = Read-Host -Prompt 'Enter Server IP Address'
+$prefix = Read-Host -Prompt 'Enter Prefix Length'
+$gateway = Read-Host -Prompt 'Enter DefaultGateway Address'
+$dns = Read-Host -Prompt 'Enter DNS Server Address'
+$name = Read-Host -Prompt 'Enter Server Name'
+
+New-NetIPAddress –InterfaceAlias Ethernet0 –IPAddress $IP –PrefixLength $prefix -DefaultGateway $gateway
+New-NetIPAddress –InterfaceAlias Ethernet1 –IPAddress 192.168.3.10 –PrefixLength $prefix -DefaultGateway 192.168.3.1
+New-NetIPAddress –InterfaceAlias Ethernet2 –IPAddress 192.168.4.10 –PrefixLength $prefix -DefaultGateway 192.168.4.1
+
+Set-DnsClientServerAddress -InterfaceAlias Ethernet0 -ServerAddresses $dns
+Set-DnsClientServerAddress -InterfaceAlias Ethernet1 -ServerAddresses $dns
+Set-DnsClientServerAddress -InterfaceAlias Ethernet2 -ServerAddresses $dns
+
+rename-computer $name
+
+$path = [Environment]::GetFolderPath("Desktop") + "\AddForest.ps1"
+New-Item $path -ItemType File
+Set-Content -Path $path -Value @'
+Install-WindowsFeature -name AD-Domain-Services -IncludeManagementTools
+
+$dname = Read-Host -Prompt 'Enter Domain Name'
+$dext = Read-Host -Prompt 'Enter Domain'
+
+Import-Module ADDSDeployment
+Install-ADDSForest `
+-CreateDnsDelegation:$false `
+-DatabasePath "C:\Windows\NTDS" `
+-DomainMode "WinThreshold" `
+-DomainName $dname"."$dext `
+-DomainNetbiosName $dname `
+-ForestMode "WinThreshold" `
+-InstallDns:$true `
+-LogPath "C:\Windows\NTDS" `
+-NoRebootOnCompletion:$false `
+-SysvolPath "C:\Windows\SYSVOL" `
+-Force:$true `
+-SafeModeAdministratorPassword (ConvertTo-SecureString -String 'password' -Force -AsPlainText)
+
+$pathb = [Environment]::GetFolderPath("Desktop") + "\RestartNetworkServices.ps1"
+Remove-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Name "AddForest"
+Set-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Name "RestartNetworkServices" -Value "powershell.exe $pathb"
+
+write-host "deleting used files.."
+$path = [Environment]::GetFolderPath("Desktop") + "\AddForest.ps1"
+Remove-Item -Path $path -Force
+
+restart-computer
+'@
+
+$pathb = [Environment]::GetFolderPath("Desktop") + "\RestartNetworkServices.ps1"
+New-Item $pathb -ItemType File
+Set-Content -Path $pathb -Value @'
+Restart-Service -Name NlaSvc -force
+
+$dom = (Get-WmiObject Win32_ComputerSystem).Domain
+
+$dnsname = Read-Host -Prompt 'Enter Network ID'
+$dnspref = Read-Host -Prompt 'Enter Prefix'
+
+$str = $dnsname.Split(".")[0]+"."+$dnsname.Split(".")[1]+"."+$dnsname.Split(".")[2]
+$rstr = $dnsname.Split(".")[2]+"."+$dnsname.Split(".")[1]+"."+$dnsname.Split(".")[0]
+
+Add-DnsServerPrimaryZone -NetworkID $dnsname"/"$dnspref -ZoneFile "$rstr.in-addr.arpa.dns"
+Add-DnsServerResourceRecord -ZoneName $dom -A -CreatePtr -Name "vcsa" -AllowUpdateAny -IPv4Address "$str.15"
+
+21..25 | %{ $esxi = $_; Add-DnsServerResourceRecord -ZoneName $dom -A -CreatePtr -Name "esxi$esxi" -AllowUpdateAny -IPv4Address "$str.$esxi" }
+
+Install-WindowsFeature -Name DHCP –IncludeManagementTools
+Add-DhcpServerV4Scope -Name "DHCP" -StartRange 192.168.2.50 -EndRange 192.168.2.150 -SubnetMask 255.255.255.0
+Set-DhcpServerV4OptionValue -DnsServer 192.168.2.10 -Router 192.168.2.1
+Set-DhcpServerv4Scope -ScopeId 192.168.2.10 -LeaseDuration 1.00:00:00
+Add-DhcpServerInDC -DnsName "DHCP.v.lab" -IPAddress 192.168.2.10
+Restart-service dhcpserver
+
+$RegPath = "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon"
+Remove-ItemProperty $RegPath -Name "AutoAdminLogon"
+Remove-ItemProperty $RegPath -Name "DefaultUsername"
+Remove-ItemProperty $RegPath -Name "DefaultPassword"
+
+Remove-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Name "RestartNetworkServices"
+
+write-host "deleting used files.."
+$pathb = [Environment]::GetFolderPath("Desktop") + "\RestartNetworkServices.ps1"
+Remove-Item -Path $pathb -Force
+'@
+
+$RegPath = "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon"
+Set-ItemProperty $RegPath "AutoAdminLogon" -Value "1"
+Set-ItemProperty $RegPath "DefaultUsername" -Value "Administrator" -type String  
+Set-ItemProperty $RegPath "DefaultPassword" -Value "Password" -type String
+
+Set-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Name "AddForest" -Value "powershell.exe $path"
+
+write-host "deleting used files.."
+$pathd = [Environment]::GetFolderPath("Desktop") + "\WORKING_AD_Script.ps1"
+Remove-Item -Path $pathd -Force
+
+restart-computer
